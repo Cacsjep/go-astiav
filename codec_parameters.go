@@ -3,6 +3,10 @@ package astiav
 //#cgo pkg-config: libavcodec
 //#include <libavcodec/avcodec.h>
 import "C"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // https://github.com/FFmpeg/FFmpeg/blob/n5.0/libavcodec/codec_par.h#L52
 type CodecParameters struct {
@@ -18,6 +22,35 @@ func newCodecParametersFromC(c *C.struct_AVCodecParameters) *CodecParameters {
 		return nil
 	}
 	return &CodecParameters{c: c}
+}
+
+// SetExtraData sets the codec-specific extra data.
+// extraData should contain the data you want to set, such as SPS and PPS for H.264.
+func (cp *CodecParameters) SetExtraData(extraData []byte) error {
+	if len(extraData) == 0 {
+		return nil // Or return an error if you expect extraData to never be empty
+	}
+
+	// Free existing extradata if any
+	if cp.c.extradata != nil {
+		C.av_freep(unsafe.Pointer(&cp.c.extradata))
+		cp.c.extradata_size = 0
+	}
+
+	// Allocate memory for new extradata
+	extradataSize := len(extraData)
+	cp.c.extradata = (*C.uint8_t)(C.av_mallocz(C.size_t(extradataSize + C.AV_INPUT_BUFFER_PADDING_SIZE)))
+	if cp.c.extradata == nil {
+		return fmt.Errorf("failed to allocate extradata")
+	}
+
+	// Copy extraData into the allocated extradata memory
+	C.memcpy(unsafe.Pointer(cp.c.extradata), unsafe.Pointer(&extraData[0]), C.size_t(extradataSize))
+
+	// Set the extradata size
+	cp.c.extradata_size = C.int(extradataSize)
+
+	return nil
 }
 
 func (cp *CodecParameters) Free() {
